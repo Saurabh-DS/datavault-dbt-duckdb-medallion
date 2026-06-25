@@ -1,0 +1,38 @@
+# ── Git & GitHub ──────────────────────────────────────────────────────────────
+.git
+.github
+.gitignore
+.dockerignore
+
+# ── Local Workspace & IDEs ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.user.yml
+.deepeval/
+
+# ── Environment & Secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+*.env
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+build/
+dist/
+
+# ── DBT Artefacts & Databases ─────────────────────────────────────────────────
+target/
+dbt_packages/
+logs/
+datavault.duckdb
+datavault.duckdb.wal

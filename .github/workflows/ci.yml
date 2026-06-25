@@ -1,0 +1,95 @@
+name: CI — DataVault Pull Request Check
+
+on:
+  pull_request:
+    branches: [main]
+    # Run CI on any change to models, tests, macros, seeds, snapshots, or config
+    paths:
+      - 'models/**'
+      - 'tests/**'
+      - 'macros/**'
+      - 'seeds/**'
+      - 'snapshots/**'
+      - 'dbt_project.yml'
+      - 'packages.yml'
+      - 'profiles.yml'
+      - 'scripts/**'
+
+jobs:
+  dbt-ci:
+    name: dbt Slim CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Python setup ──────────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ── Install dependencies ──────────────────────────────────────────────────
+      # Install only the dbt and data-generation dependencies (not Airflow)
+      # to keep CI fast. Airflow is only needed for orchestration, not testing.
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install \
+            dbt-core==1.8.7 \
+            dbt-duckdb==1.8.4 \
+            duckdb==1.0.0 \
+            faker==26.0.0 \
+            pandas==2.2.2 \
+            numpy==1.26.4
+
+      # ── Install dbt packages ──────────────────────────────────────────────────
+      - name: Install dbt packages
+        run: dbt deps --profiles-dir .
+
+      # ── Generate synthetic seed data ─────────────────────────────────────────
+      - name: Generate synthetic data
+        run: python scripts/generate_data.py
+
+      # ── Load seeds ────────────────────────────────────────────────────────────
+      - name: dbt seed
+        run: dbt seed --profiles-dir .
+
+      # ── Compile: catch SQL syntax errors before any model runs ───────────────
+      # This is the fastest possible check — no DuckDB writes.
+      - name: dbt compile
+        run: dbt compile --profiles-dir .
+
+      # ── Build staging and intermediate layers ────────────────────────────────
+      # Scoped build: only bronze and silver. Mart builds happen on merge to main.
+      # In a true slim CI with persistent manifest storage, this would be:
+      #   dbt build --select state:modified+ --defer --state ./prod_state
+      # See README.md § CI/CD for the full slim CI pattern.
+      - name: dbt build — staging
+        run: dbt build --select staging --profiles-dir .
+
+      - name: dbt build — intermediate
+        run: dbt build --select intermediate --profiles-dir .
+
+      # ── Singular tests only ───────────────────────────────────────────────────
+      # Run the custom business-logic tests on every PR.
+      # Generic schema tests (not_null, unique, relationships) are run as part
+      # of dbt build above. Singular tests are run separately to make failures
+      # immediately visible in the CI summary.
+      - name: dbt test — singular tests
+        run: dbt test --select test_type:singular --profiles-dir .
+
+      # ── Upload test results ───────────────────────────────────────────────────
+      - name: Upload dbt artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-ci-artifacts
+          path: |
+            target/run_results.json
+            target/manifest.json
+          retention-days: 7

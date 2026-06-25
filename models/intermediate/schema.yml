@@ -1,0 +1,135 @@
+version: 2
+
+models:
+  - name: int_policy_claims_bridge
+    description: >
+      Silver bridge model. One row per policy_id (policy version).
+      LEFT JOIN of stg_policies to stg_claims aggregated at policy level.
+      Preserves zero-claim policies. All customer risk profiling flows through
+      this model. Grain: policy_id.
+    columns:
+      - name: policy_id
+        description: UUID primary key — unique per policy version.
+        tests:
+          - not_null
+          - unique
+
+      - name: policy_number
+        description: Stable policy identifier across renewals.
+        tests:
+          - not_null
+
+      - name: customer_id
+        description: Foreign key to stg_customers.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+
+      - name: cover_type
+        description: Motor insurance cover type.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["comprehensive", "third_party_fire_theft", "third_party"]
+
+      - name: vehicle_value
+        description: Declared vehicle value in GBP.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 500000
+
+      - name: annual_premium
+        description: Annual premium for this policy version.
+        tests:
+          - not_null
+
+      - name: claim_count
+        description: Number of claims filed against this policy_id. 0 for clean policies.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 500
+
+      - name: total_claim_amount
+        description: Sum of all claim amounts for this policy_id. 0 for clean policies.
+        tests:
+          - not_null
+
+      - name: open_claim_count
+        description: Count of claims with status 'open'.
+        tests:
+          - not_null
+
+      - name: settled_claim_count
+        description: Count of claims with status 'settled'.
+        tests:
+          - not_null
+
+      - name: has_claims
+        description: True if any claim exists for this policy_id.
+        tests:
+          - not_null
+
+      - name: is_current_version
+        description: True if this is the latest version of this policy_number.
+        tests:
+          - not_null
+
+  - name: int_customer_risk_profile
+    description: >
+      Silver customer-level lifetime aggregation.
+      One row per customer_id. Aggregates the policy-claims bridge across all
+      policy versions. Applies the risk_band macro to classify each customer
+      into low / medium / high risk. Grain: customer_id.
+    columns:
+      - name: customer_id
+        description: UUID primary key.
+        tests:
+          - not_null
+          - unique
+
+      - name: policy_count
+        description: Total number of policy rows (including renewals).
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+              max_value: 100
+
+      - name: active_policy_count
+        description: Count of currently active policies.
+        tests:
+          - not_null
+
+      - name: lifetime_claim_count
+        description: Total number of claims across all policies and renewals.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 1000
+
+      - name: lifetime_claim_value
+        description: Total claim amount (GBP) across all policies and renewals.
+        tests:
+          - not_null
+
+      - name: risk_band
+        description: Customer risk classification from the risk_band macro.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["low", "medium", "high"]
+
+      - name: max_no_claims_discount
+        description: Highest NCD level held across all policies.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 9

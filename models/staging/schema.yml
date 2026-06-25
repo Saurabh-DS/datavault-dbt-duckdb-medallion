@@ -1,0 +1,236 @@
+version: 2
+
+# ── Sources ───────────────────────────────────────────────────────────────────
+# Raw seed data lives in the 'raw' schema (configured in dbt_project.yml seeds).
+# Source freshness thresholds apply in a real ingestion scenario; for the seed
+# workflow, dbt seed resets the loaded_at column on every run.
+
+sources:
+  - name: raw
+    description: >
+      Raw source data schema. In a production environment this would be
+      populated by Fivetran, Airbyte, or a custom extraction layer.
+      In this project it is populated by dbt seed from scripts/generate_data.py.
+    schema: raw
+
+    freshness:
+      warn_after: {count: 24, period: hour}
+      error_after: {count: 48, period: hour}
+
+    tables:
+      - name: raw_customers
+        description: Raw customer master records.
+        loaded_at_field: updated_at
+        columns:
+          - name: customer_id
+            tests: [not_null, unique]
+          - name: email
+            tests: [not_null, unique]
+
+      - name: raw_policies
+        description: Raw policy records, one row per policy version.
+        loaded_at_field: updated_at
+        columns:
+          - name: policy_id
+            tests: [not_null, unique]
+          - name: policy_number
+            tests: [not_null]
+          - name: customer_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('raw', 'raw_customers')
+                  field: customer_id
+
+      - name: raw_claims
+        description: Raw claim records.
+        loaded_at_field: updated_at
+        columns:
+          - name: claim_id
+            tests: [not_null, unique]
+          - name: policy_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('raw', 'raw_policies')
+                  field: policy_id
+
+# ── Staging Models ────────────────────────────────────────────────────────────
+
+models:
+  - name: stg_customers
+    description: >
+      Bronze staging view for customer data.
+      One row per customer. Adds full_name derived column and _loaded_at
+      pipeline timestamp. No business logic.
+    columns:
+      - name: customer_id
+        description: UUID primary key.
+        tests:
+          - not_null
+          - unique
+
+      - name: full_name
+        description: Concatenated first_name + last_name.
+        tests:
+          - not_null
+
+      - name: email
+        description: Customer email address.
+        tests:
+          - not_null
+          - unique
+
+      - name: date_of_birth
+        description: Customer date of birth.
+        tests:
+          - not_null
+
+      - name: licence_years
+        description: Years of driving licence held.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 60
+
+      - name: updated_at
+        description: >
+          Last updated timestamp from source. Drives SCD Type 1 snapshot
+          change detection on address and phone columns.
+        tests:
+          - not_null
+
+      - name: _loaded_at
+        description: Timestamp this row was last loaded through the staging model.
+        tests:
+          - not_null
+
+  - name: stg_policies
+    description: >
+      Bronze staging view for policy data.
+      One row per policy version. Surfaces both policy_id (version-specific)
+      and policy_number (stable across renewals). Derives is_current_version
+      and days_until_expiry.
+    columns:
+      - name: policy_id
+        description: UUID unique to this policy version.
+        tests:
+          - not_null
+          - unique
+
+      - name: policy_number
+        description: Stable identifier shared across all versions of a policy.
+        tests:
+          - not_null
+
+      - name: customer_id
+        description: Foreign key to stg_customers.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+
+      - name: cover_type
+        description: Motor insurance cover type.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["comprehensive", "third_party_fire_theft", "third_party"]
+
+      - name: vehicle_value
+        description: Declared vehicle value in GBP.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 500
+              max_value: 200000
+
+      - name: annual_premium
+        description: Annual premium in GBP.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 50000
+
+      - name: no_claims_discount
+        description: Years of no-claims discount (0–9).
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 9
+
+      - name: policy_status
+        description: Status of this policy version.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["active", "expired", "cancelled"]
+
+      - name: is_current_version
+        description: True if this is the most recent version of this policy_number.
+        tests:
+          - not_null
+
+      - name: _loaded_at
+        description: Pipeline load timestamp.
+        tests:
+          - not_null
+
+  - name: stg_claims
+    description: >
+      Bronze staging view for claims data.
+      One row per claim. Adds is_open and is_settled derived boolean flags.
+    columns:
+      - name: claim_id
+        description: UUID primary key for the claim.
+        tests:
+          - not_null
+          - unique
+
+      - name: policy_id
+        description: Foreign key to stg_policies (version-specific).
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_policies')
+              field: policy_id
+
+      - name: claim_type
+        description: Nature of the claim.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["accident", "theft", "fire", "windscreen", "weather"]
+
+      - name: claim_status
+        description: Current claim status.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["settled", "open", "rejected"]
+
+      - name: claim_amount
+        description: Claimed amount in GBP.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 200000
+
+      - name: is_open
+        description: True if claim_status = 'open'.
+        tests:
+          - not_null
+
+      - name: is_settled
+        description: True if claim_status = 'settled'.
+        tests:
+          - not_null
+
+      - name: _loaded_at
+        description: Pipeline load timestamp.
+        tests:
+          - not_null

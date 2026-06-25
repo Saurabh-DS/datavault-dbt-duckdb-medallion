@@ -1,0 +1,70 @@
+-- mart_customer_risk.sql
+-- Gold layer: One row per customer with full risk profile and claim history.
+--
+-- This is a consumer-facing output table with an enforced dbt contract.
+-- Any schema change (renamed or removed column, type change) will cause
+-- the build to fail immediately, preventing silent breakage of BI tools
+-- or downstream data consumers.
+--
+-- Materialization: table (enforced by contract)
+-- Grain: one row per customer_id
+-- Contract: enforced (see schema.yml)
+
+with risk_profile as (
+
+    select * from {{ ref('int_customer_risk_profile') }}
+
+),
+
+customers as (
+
+    select * from {{ ref('stg_customers') }}
+
+),
+
+joined as (
+
+    select
+        -- Customer identity
+        c.customer_id,
+        c.full_name,
+        c.email,
+        c.phone,
+        c.city,
+        c.postcode,
+        c.date_of_birth,
+        c.licence_years,
+
+        -- Risk classification
+        rp.risk_band,
+
+        -- Policy portfolio
+        rp.policy_count,
+        rp.unique_policy_count,
+        rp.active_policy_count,
+        rp.total_annual_premium,
+        rp.avg_annual_premium,
+        rp.max_no_claims_discount,
+
+        -- Lifetime claim history
+        rp.lifetime_claim_count,
+        rp.lifetime_claim_value,
+        rp.max_single_claim_value,
+        rp.open_claim_count,
+        rp.settled_claim_count,
+        rp.first_claim_date,
+        rp.most_recent_claim_date,
+
+        -- Vehicle portfolio
+        rp.max_vehicle_value,
+        rp.avg_vehicle_value,
+
+        -- Audit
+        c.updated_at                                      as customer_last_updated_at
+
+    from customers c
+    inner join risk_profile rp on c.customer_id = rp.customer_id
+
+)
+
+select * from joined

@@ -1,0 +1,12 @@
+# dbt package dependencies
+# Install with: dbt deps --profiles-dir .
+#
+# dbt_utils     — surrogate_key, date_spine, and other utility macros
+# dbt_expectations — extended test library: range checks, regex, row counts etc.
+
+packages:
+  - package: dbt-labs/dbt_utils
+    version: 1.2.0
+
+  - package: calogica/dbt_expectations
+    version: 0.10.3

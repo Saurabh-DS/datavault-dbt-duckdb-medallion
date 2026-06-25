@@ -1,0 +1,417 @@
+version: 2
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gold / Mart layer — dbt Data Contracts
+#
+# All three mart models have contract: enforced: true.
+#
+# A contract declares every expected output column with its name and data type.
+# The dbt build fails if:
+#   - A model produces a column not declared in the contract
+#   - A declared column is missing from the model output
+#   - A column's data type does not match the declaration
+#
+# This prevents schema drift from silently breaking downstream BI tools or
+# data consumers. In a regulated environment (FCA), this is the difference
+# between a renamed column corrupting a regulatory report and a renamed column
+# causing an immediate, loud build failure that gets fixed before anyone
+# downstream is affected.
+#
+# Data types use DuckDB native type names.
+# ─────────────────────────────────────────────────────────────────────────────
+
+models:
+
+  # ── mart_customer_risk ───────────────────────────────────────────────────────
+  - name: mart_customer_risk
+    description: >
+      Gold customer risk mart. One row per customer.
+      Joins customer PII to the lifetime risk profile.
+      Primary output table for BI risk dashboards and actuarial reporting.
+      Grain: customer_id.
+    config:
+      contract:
+        enforced: true
+
+    columns:
+      - name: customer_id
+        description: UUID primary key for the customer.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        tests:
+          - not_null
+          - unique
+
+      - name: full_name
+        description: Customer's full name (first + last).
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: email
+        description: Customer email address.
+        data_type: varchar
+        tests:
+          - not_null
+          - unique
+
+      - name: phone
+        description: Customer phone number.
+        data_type: varchar
+
+      - name: city
+        description: City from customer's registered address.
+        data_type: varchar
+
+      - name: postcode
+        description: UK postcode.
+        data_type: varchar
+
+      - name: date_of_birth
+        description: Customer date of birth.
+        data_type: date
+
+      - name: licence_years
+        description: Years of driving licence held.
+        data_type: integer
+
+      - name: risk_band
+        description: Customer risk classification — low, medium, or high.
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["low", "medium", "high"]
+
+      - name: policy_count
+        description: Total number of policy rows (including renewals).
+        data_type: bigint
+        tests:
+          - not_null
+
+      - name: unique_policy_count
+        description: Count of distinct policy_numbers (unique policies, not versions).
+        data_type: bigint
+
+      - name: active_policy_count
+        description: Number of currently active policy versions.
+        data_type: bigint
+        tests:
+          - not_null
+
+      - name: total_annual_premium
+        description: Sum of annual premium across all policy versions (GBP).
+        data_type: double
+        tests:
+          - not_null
+
+      - name: avg_annual_premium
+        description: Average annual premium across all policy versions (GBP).
+        data_type: double
+
+      - name: max_no_claims_discount
+        description: Highest no-claims discount year across all policies.
+        data_type: integer
+
+      - name: lifetime_claim_count
+        description: Total claims filed across all policies and renewals.
+        data_type: bigint
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 10000
+
+      - name: lifetime_claim_value
+        description: Total claim amount across all policies (GBP).
+        data_type: double
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 10000000
+
+      - name: max_single_claim_value
+        description: Highest single claim amount (GBP).
+        data_type: double
+
+      - name: open_claim_count
+        description: Number of currently open (unresolved) claims.
+        data_type: bigint
+        tests:
+          - not_null
+
+      - name: settled_claim_count
+        description: Number of settled (paid) claims.
+        data_type: bigint
+        tests:
+          - not_null
+
+      - name: first_claim_date
+        description: Date of the customer's first ever claim.
+        data_type: date
+
+      - name: most_recent_claim_date
+        description: Date of the customer's most recent claim.
+        data_type: date
+
+      - name: max_vehicle_value
+        description: Highest vehicle value insured across all policies (GBP).
+        data_type: double
+
+      - name: avg_vehicle_value
+        description: Average vehicle value across all policies (GBP).
+        data_type: double
+
+      - name: customer_last_updated_at
+        description: Timestamp of the last update to the customer record.
+        data_type: timestamp
+
+  # ── mart_claims_summary ──────────────────────────────────────────────────────
+  - name: mart_claims_summary
+    description: >
+      Gold claims summary mart. One row per calendar month.
+      Monthly claim aggregation with volume, value, and type breakdowns.
+      Includes 3-month rolling averages for trend analysis.
+      Used by management information and FCA GABRIEL regulatory reporting.
+      Grain: claim_month (first day of month).
+    config:
+      contract:
+        enforced: true
+
+    columns:
+      - name: claim_month
+        description: First day of the calendar month (grain column).
+        data_type: date
+        constraints:
+          - type: not_null
+        tests:
+          - not_null
+          - unique
+
+      - name: total_claims
+        description: Total number of claims in this month.
+        data_type: bigint
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100000
+
+      - name: settled_claims
+        description: Number of settled claims in this month.
+        data_type: bigint
+        tests:
+          - not_null
+
+      - name: open_claims
+        description: Number of open (unresolved) claims in this month.
+        data_type: bigint
+        tests:
+          - not_null
+
+      - name: rejected_claims
+        description: Number of rejected claims in this month.
+        data_type: bigint
+        tests:
+          - not_null
+
+      - name: total_claim_amount
+        description: Total claim amount for all claims in this month (GBP).
+        data_type: double
+        tests:
+          - not_null
+
+      - name: avg_claim_amount
+        description: Average claim amount for this month (GBP).
+        data_type: double
+
+      - name: max_claim_amount
+        description: Largest single claim amount in this month (GBP).
+        data_type: double
+
+      - name: settled_claim_amount
+        description: Total amount paid out on settled claims (GBP).
+        data_type: double
+        tests:
+          - not_null
+
+      - name: avg_days_to_settle
+        description: Average days to settle for settled claims in this month.
+        data_type: double
+
+      - name: accident_claims
+        description: Count of accident-type claims.
+        data_type: bigint
+
+      - name: theft_claims
+        description: Count of theft-type claims.
+        data_type: bigint
+
+      - name: fire_claims
+        description: Count of fire-type claims.
+        data_type: bigint
+
+      - name: windscreen_claims
+        description: Count of windscreen-type claims.
+        data_type: bigint
+
+      - name: weather_claims
+        description: Count of weather-type claims.
+        data_type: bigint
+
+      - name: comprehensive_claims
+        description: Count of claims from comprehensive-cover policies.
+        data_type: bigint
+
+      - name: tpft_claims
+        description: Count of claims from third-party fire and theft policies.
+        data_type: bigint
+
+      - name: tp_claims
+        description: Count of claims from third-party only policies.
+        data_type: bigint
+
+      - name: rolling_3m_avg_claims
+        description: 3-month rolling average of total_claims (current + 2 prior months).
+        data_type: double
+
+      - name: rolling_3m_avg_claim_amount
+        description: 3-month rolling average of total_claim_amount.
+        data_type: double
+
+      - name: rolling_3m_avg_claim_size
+        description: 3-month rolling average of avg_claim_amount.
+        data_type: double
+
+  # ── mart_policy_renewals ─────────────────────────────────────────────────────
+  - name: mart_policy_renewals
+    description: >
+      Gold renewals mart. One row per active policy due for renewal within
+      the configurable lookahead window (default 30 days, set via
+      renewal_lookahead_days project variable).
+      Only current-version active policies are included. Used by the renewals
+      team for outreach prioritisation. Ordered by days_until_expiry ascending.
+      Grain: policy_id (current version only).
+    config:
+      contract:
+        enforced: true
+
+    columns:
+      - name: policy_id
+        description: UUID for this policy version.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        tests:
+          - not_null
+          - unique
+
+      - name: policy_number
+        description: Stable policy identifier.
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: customer_id
+        description: Foreign key to the customer.
+        data_type: varchar
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+
+      - name: customer_name
+        description: Customer full name.
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: customer_email
+        description: Customer email for renewal outreach.
+        data_type: varchar
+
+      - name: customer_phone
+        description: Customer phone for renewal outreach.
+        data_type: varchar
+
+      - name: city
+        description: Customer city.
+        data_type: varchar
+
+      - name: postcode
+        description: Customer postcode.
+        data_type: varchar
+
+      - name: cover_type
+        description: Current cover type.
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["comprehensive", "third_party_fire_theft", "third_party"]
+
+      - name: vehicle_make
+        description: Vehicle manufacturer.
+        data_type: varchar
+
+      - name: vehicle_model
+        description: Vehicle model name.
+        data_type: varchar
+
+      - name: vehicle_registration_year
+        description: Year vehicle was first registered.
+        data_type: integer
+
+      - name: vehicle_value
+        description: Declared vehicle value (GBP).
+        data_type: double
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 500000
+
+      - name: annual_premium
+        description: Current annual premium (GBP).
+        data_type: double
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100000
+
+      - name: no_claims_discount
+        description: Current NCD years.
+        data_type: integer
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 9
+
+      - name: projected_renewal_ncd
+        description: NCD after one additional claim-free year (capped at 9).
+        data_type: bigint
+
+      - name: current_start_date
+        description: Policy inception date.
+        data_type: date
+        tests:
+          - not_null
+
+      - name: current_end_date
+        description: Policy expiry date.
+        data_type: date
+        tests:
+          - not_null
+
+      - name: days_until_expiry
+        description: Calendar days until the policy expires (positive = future).
+        data_type: bigint
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 366

@@ -1,0 +1,53 @@
+# ── DuckDB database files ─────────────────────────────────────────────────────
+*.duckdb
+*.duckdb.wal
+
+# ── dbt artefacts ─────────────────────────────────────────────────────────────
+target/
+dbt_packages/
+logs/
+
+# ── Airflow ───────────────────────────────────────────────────────────────────
+logs/
+plugins/
+airflow.db
+airflow.cfg
+webserver_config.py
+standalone_admin_password.txt
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# ── Environment and secrets ───────────────────────────────────────────────────
+.env
+.env.*
+*.env
+
+# ── OS artefacts ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Local Workspace & Private Configs ─────────────────────────────────────────
+.user.yml
+.deepeval/

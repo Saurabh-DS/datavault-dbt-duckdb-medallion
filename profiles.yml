@@ -1,0 +1,28 @@
+# dbt connection profile for DataVault
+# DuckDB runs fully in-process — no server, no credentials, no setup.
+#
+# The database file is written to ./datavault.duckdb relative to the project
+# root. Override via the DATAVAULT_DB_PATH environment variable if needed.
+#
+# Usage:
+#   dbt build --profiles-dir .
+#   (--profiles-dir . tells dbt to look for profiles.yml in the project root)
+
+datavault:
+  target: dev
+  outputs:
+
+    dev:
+      type: duckdb
+      path: "{{ env_var('DATAVAULT_DB_PATH', './datavault.duckdb') }}"
+      threads: 4
+      # DuckDB extensions can be listed here if needed in future
+      # extensions:
+      #   - httpfs
+      #   - parquet
+
+    # Production target — swap path for a shared location or S3-backed file
+    prod:
+      type: duckdb
+      path: "{{ env_var('DATAVAULT_DB_PATH', './datavault_prod.duckdb') }}"
+      threads: 8
