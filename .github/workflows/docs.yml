@@ -55,6 +55,9 @@ jobs:
       - name: dbt seed
         run: dbt seed --profiles-dir .
 
+      - name: dbt build staging views
+        run: dbt build --select staging --profiles-dir .
+
       - name: dbt snapshot
         run: dbt snapshot --profiles-dir .
 

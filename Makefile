@@ -9,7 +9,7 @@
 all: help
 
 # ── Full pipeline ──────────────────────────────────────────────────────────────
-full-run: generate seed snapshot build test
+full-run: generate seed build-staging snapshot build test
 	@echo "✅  DataVault full pipeline completed successfully."
 
 # ── Individual steps ───────────────────────────────────────────────────────────
