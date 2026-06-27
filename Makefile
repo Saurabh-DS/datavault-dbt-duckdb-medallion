@@ -39,7 +39,7 @@ compile:
 
 # ── Scoped builds ─────────────────────────────────────────────────────────────
 build-staging:
-	dbt build --select staging --profiles-dir .
+	dbt run --select staging --profiles-dir .
 
 build-intermediate:
 	dbt build --select intermediate --profiles-dir .

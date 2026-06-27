@@ -100,7 +100,7 @@ Or run steps individually:
 
 ```bash
 dbt seed --profiles-dir .
-dbt build --select staging --profiles-dir .
+dbt run --select staging --profiles-dir .
 dbt snapshot --profiles-dir .
 dbt build --profiles-dir .
 ```
