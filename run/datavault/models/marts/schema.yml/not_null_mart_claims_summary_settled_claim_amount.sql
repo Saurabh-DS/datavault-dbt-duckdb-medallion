@@ -1,0 +1,19 @@
+select
+      count(*) as failures,
+      count(*) != 0 as should_warn,
+      count(*) != 0 as should_error
+    from (
+      
+    
+    
+
+
+
+select settled_claim_amount
+from "datavault"."marts"."mart_claims_summary"
+where settled_claim_amount is null
+
+
+
+      
+    ) dbt_internal_test

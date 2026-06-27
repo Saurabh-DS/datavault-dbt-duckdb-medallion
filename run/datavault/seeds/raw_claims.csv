@@ -1,0 +1,11 @@
+
+    
+    
+    truncate table "datavault"."raw"."raw_claims";
+    -- dbt seed --
+    
+          COPY "datavault"."raw"."raw_claims" FROM '/home/runner/work/datavault-dbt-duckdb-medallion/datavault-dbt-duckdb-medallion/seeds/raw_claims.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',')
+        
+
+;
+  
